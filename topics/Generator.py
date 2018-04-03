@@ -34,22 +34,9 @@ class TextGenerator(object):
             with open(i, 'r') as f:
                 self.documents_raw.append(f.read())
     
-    @staticmethod
-    def _parse_doc(document):
-        '''Parse a single paragraph
-        Remove whitespaces, punctuations    
-        '''
-
-        tokenizer = RegexpTokenizer(r'\w+')
-        intermediate = tokenizer.tokenize(document)    
-        parsed = [i.lower() for i in intermediate]
-
-        return parsed
-
     def _parse_collection(self):
         # parse all docs  
         
-        self.documents_raw
         for raw_text in self.documents_raw:
             doc = self.PATTERN.sub('', unicode(raw_text, 'ascii', 'ignore').lower())
             paragraphs = doc.split('\r\n\r\n')        
