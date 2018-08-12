@@ -26,11 +26,11 @@ def softmax(x):
     Return:
     x -- You are allowed to modify x in-place
     """
-    orig_shape = x.shape
-    D = orig_shape[1]
+    orig_shape = x.shape    
     if len(x.shape) > 1:
         # Matrix
         ### YOUR CODE HERE
+        D = orig_shape[1]
         max_x = np.tile(x.max(axis=1), [D, 1]).T
         exp_x = np.exp(x - max_x)
         x = exp_x / np.tile(exp_x.sum(axis=1), [D, 1]).T
