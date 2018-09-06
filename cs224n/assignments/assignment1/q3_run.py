@@ -34,8 +34,8 @@ wordVectors = np.concatenate(
        dimVectors, np.zeros((nWords, dimVectors))),
     axis=0)
 
-word2vecCostAndGradient =  negSamplingCostAndGradient # softmaxCostAndGradient
-iterations = 400 # 40000
+word2vecCostAndGradient =  softmaxCostAndGradient # negSamplingCostAndGradient
+iterations = 10000 # 40000
 wordVectors = sgd(
     lambda vec: word2vec_sgd_wrapper(skipgram, tokens, vec, dataset, C,
         word2vecCostAndGradient),
