@@ -61,7 +61,7 @@ class ParserModel(nn.Module):
         ###         It has been shown empirically, that this provides better initial weights
         ###         for training networks than random uniform initialization.
         ###         For more details checkout this great blogpost:
-        ###             http://andyljones.tumblr.com/post/110998971763/an-explanation-of-xavier-initialization 
+        ###             http://andyljones.tumblr.com/post/110998971763/an-explanation-of-xavier-initialization
         ### Hints:
         ###     - After you create a linear layer you can access the weight
         ###       matrix via:
@@ -72,6 +72,13 @@ class ParserModel(nn.Module):
         ###     Xavier Init: https://pytorch.org/docs/stable/nn.html#torch.nn.init.xavier_uniform_
         ###     Dropout: https://pytorch.org/docs/stable/nn.html#torch.nn.Dropout
 
+        self.embed_to_hidden = nn.Linear(self.n_features * self.embed_size, self.hidden_size)
+        torch.nn.init.xavier_uniform_(self.embed_to_hidden.weight)
+
+        self.dropout = nn.Dropout(p=dropout_prob)
+
+        self.hidden_to_logits = nn.Linear(self.hidden_size, self.n_classes)
+        torch.nn.init.xavier_uniform_(self.hidden_to_logits.weight)
 
         ### END YOUR CODE
 
@@ -103,8 +110,8 @@ class ParserModel(nn.Module):
         ###  Please see the following docs for support:
         ###     Embedding Layer: https://pytorch.org/docs/stable/nn.html#torch.nn.Embedding
         ###     View: https://pytorch.org/docs/stable/tensors.html#torch.Tensor.view
-
-
+        batch_embeddings = self.pretrained_embeddings(t)
+        x = batch_embeddings.view(batch_embeddings.shape[0], batch_embeddings.shape[1] * batch_embeddings.shape[2])
         ### END YOUR CODE
         return x
 
@@ -141,7 +148,11 @@ class ParserModel(nn.Module):
         ###
         ### Please see the following docs for support:
         ###     ReLU: https://pytorch.org/docs/stable/nn.html?highlight=relu#torch.nn.functional.relu
-
+        x = self.embedding_lookup(t)
+        z = self.embed_to_hidden(x)
+        h = F.relu(z)
+        hd = self.dropout(h)
+        logits = self.hidden_to_logits(hd)
 
         ### END YOUR CODE
         return logits

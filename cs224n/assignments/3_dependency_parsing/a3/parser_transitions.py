@@ -7,6 +7,7 @@ Sahil Chopra <schopra8@stanford.edu>
 """
 
 import sys
+from copy import copy
 
 class PartialParse(object):
     def __init__(self, sentence):
@@ -30,7 +31,9 @@ class PartialParse(object):
         ###
         ### Note: The root token should be represented with the string "ROOT"
         ###
-
+        self.stack = ['ROOT']
+        self.buffer = copy(self.sentence)
+        self.dependencies = []
 
         ### END YOUR CODE
 
@@ -49,8 +52,16 @@ class PartialParse(object):
         ###         1. Shift
         ###         2. Left Arc
         ###         3. Right Arc
-
-
+        if transition == 'S':
+            self.stack.append(self.buffer.pop(0))
+        elif transition == 'LA':
+            dep = self.stack.pop(-2)
+            head = self.stack[-1]
+            self.dependencies.append((head, dep))
+        else:  # transition == 'RA'
+            dep = self.stack.pop()
+            head = self.stack[-1]
+            self.dependencies.append((head, dep))
         ### END YOUR CODE
 
     def parse(self, transitions):
@@ -100,8 +111,20 @@ def minibatch_parse(sentences, model, batch_size):
     ###             contains references to the same objects. Thus, you should NOT use the `del` operator
     ###             to remove objects from the `unfinished_parses` list. This will free the underlying memory that
     ###             is being accessed by `partial_parses` and may cause your code to crash.
+    partial_parses = [PartialParse(i) for i in sentences]
+    unfinished_parses = partial_parses[:]
 
+    while unfinished_parses:
+        mini_batch = unfinished_parses[:batch_size]
+        transitions = model.predict(mini_batch)
+        for (parse, transition) in zip(mini_batch, transitions):
+            parse.parse_step(transition)
+        drop_indice = [i for i in range(len(mini_batch))
+            if not unfinished_parses[i].buffer and len(unfinished_parses[i].stack) == 1]
+        for j in drop_indice[::-1]:
+            unfinished_parses.pop(j)
 
+    dependencies = [parse.dependencies for parse in partial_parses]
     ### END YOUR CODE
 
     return dependencies
