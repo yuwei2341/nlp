@@ -4,7 +4,7 @@ glove.6B.50d.txt
 .cproject
 .project
 .pydevproject
-
+*.model
 # folder: / means the folder where .gitignore is 
 /data/
 
