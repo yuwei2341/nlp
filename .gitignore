@@ -8,7 +8,9 @@ glove.6B.50d.txt
 # folder: / means the folder where .gitignore is 
 /data/
 transformers/test_save_dataset/
-
+transformers/data/
+transformers/model/
+transformers/test-trainer/
 # C extensions
 *.so
 
