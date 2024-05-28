@@ -11,6 +11,10 @@ transformers/test_save_dataset/
 transformers/data/
 transformers/model/
 transformers/test-trainer/
+cs224n/assignments/4_nmt/model.bin
+cs224n/assignments/4_nmt/model.bin.optim
+cs224n/assignments/4_nmt/outputs/
+cs224n/assignments/4_nmt/vocab.json
 # C extensions
 *.so
 

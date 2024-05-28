@@ -261,7 +261,8 @@ class NMT(nn.Module):
         
         for Y_t in Y.split(1):
             Y_t = Y_t.squeeze(dim=0)  # (b, e)
-            Ybar_t = torch.cat((Y_t, o_prev), dim=1)  # (b, e+h)
+            # In the validation code, beam_search(), Y_t is before o_prev; So do the same here
+            Ybar_t = torch.cat((Y_t, o_prev), dim=1)  # (b, e+h). 
             dec_state, o_t, e_t = self.step(Ybar_t, dec_state, enc_hiddens, enc_hiddens_proj, enc_masks)
             combined_outputs.append(o_t)
             o_prev = o_t
