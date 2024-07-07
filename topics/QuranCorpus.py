@@ -10,6 +10,9 @@ import spacy
 
 
 class QuranCorpus:
+    '''Class for reading Quran corpus and preprocessing
+    Preprocessing includes: tokenization, removing stop words, lemmatization
+    '''
     def __init__(self, is_remove_basamal=True, is_stop=True, additional_stops=None, is_stemming=False):
 
         self.is_remove_basamal = is_remove_basamal
