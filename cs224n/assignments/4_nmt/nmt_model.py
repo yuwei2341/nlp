@@ -464,15 +464,18 @@ class NMT(nn.Module):
             (h_t, cell_t), att_t, _  = self.step(x, h_tm1,
                                                       exp_src_encodings, exp_src_encodings_att_linear, enc_masks=None)
 
-            # log probabilities over target words
+            # log probabilities over target words, a batch of hyp_num
             log_p_t = F.log_softmax(self.target_vocab_projection(att_t), dim=-1)
 
             live_hyp_num = beam_size - len(completed_hypotheses)
             contiuating_hyp_scores = (hyp_scores.unsqueeze(1).expand_as(log_p_t) + log_p_t).view(-1)
             top_cand_hyp_scores, top_cand_hyp_pos = torch.topk(contiuating_hyp_scores, k=live_hyp_num)
 
+            # Each prev hypothesis correponds to a dist of logP of target words, therefore
+            # contiuating_hyp_scores had dim (hyp_num, n_target_voc) -> hyp_num * n_target_voc, therefore
+            # top_cand_hyp_pos // n_target_voc gives the id of the prev hypothesis
             # Use integer division in Python 3.x
-            prev_hyp_ids = top_cand_hyp_pos // len(self.vocab.tgt)
+            prev_hyp_ids = top_cand_hyp_pos // len(self.vocab.tgt)  
             hyp_word_ids = top_cand_hyp_pos % len(self.vocab.tgt)
 
             new_hypotheses = []
