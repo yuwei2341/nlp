@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <title>PDF Uploader</title>
+</head>
+<body>
+    <h1>Upload PDF for Extraction</h1>
+    {% with messages = get_flashed_messages() %}
+        {% if messages %}
+            <ul>
+                {% for message in messages %}
+                    <li>{{ message }}</li>
+                {% endfor %}
+            </ul>
+        {% endif %}
+    {% endwith %}
+    
+    <form action="/query" method="post">
+        <label for="query">Enter your query:</label>
+        <input type="text" id="query" name="query" required>
+        <br>
+        
+        <label for="selected_files">Select files (one or multiple):</label>
+        <select name="selected_files" id="selected_files" multiple size="5">
+            {% for file in uploaded_files %}
+                <option value="{{ file }}">{{ file }}</option>
+            {% endfor %}
+        </select>
+        <br>
+        
+        <label for="select_all_files">
+            <input type="radio" id="select_all_files" name="select_all_files" value="true"> Select All Files
+        </label>
+        <br>
+
+        <label for="new_file">Or, Upload a New File:</label>
+        <input type="file" name="file" accept=".pdf">
+        <br>
+
+        <button type="submit">Submit</button>
+    </form>
+
+    {% if replace_file %}
+        <form action="/replace/{{ replace_file }}" method="post" enctype="multipart/form-data">
+            <input type="file" name="file" accept=".pdf">
+            <button type="submit">Replace File</button>
+        </form>
+    {% endif %}
+    
+    {% if uploaded_files %}
+        <h2>Uploaded Files</h2>
+        <ul>
+            {% for file in uploaded_files %}
+                <li>
+                    {{ file }}
+                    <a href="{{ url_for('view_file', filename=file) }}">View Extracted Info</a>
+                </li>
+            {% endfor %}
+        </ul>
+    {% endif %}
+    
+    {% if extracted_info %}
+        <h2>Extracted Information for Query: "{{ query }}"</h2>
+        {% if extracted_info %}
+            {% for filename, content in extracted_info.items() %}
+                <h3>File: {{ filename }}</h3>
+                <p><strong>Processed Information:</strong></p>
+                <pre>{{ content.processed }}</pre>
+                <p><strong>Summary:</strong></p>
+                <pre>{{ content.summary }}</pre>
+            {% endfor %}
+        {% else %}
+            <p>No extracted information found.</p>
+        {% endif %}
+    {% endif %}
+</body>
+</html>
