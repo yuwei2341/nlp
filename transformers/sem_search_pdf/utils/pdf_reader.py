@@ -24,10 +24,12 @@ Author: [Your Name]
 Date: [Creation Date or Last Update]
 """
 
-import re
+import re, logging
 import pandas as pd
 from pypdf import PdfReader
 
+# Create a logger for this file
+logger = logging.getLogger(__name__)
 
 def find_title(text):
     """
@@ -40,6 +42,7 @@ def find_title(text):
     Returns:
         str: The title of the page or None if the title cannot be determined.
     """
+    logger.debug("Search for the title on a page of the pdf.")
     weekday_match = re.search(r'(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)', text)
     if weekday_match:
         # Title ends right before the weekday name
@@ -72,6 +75,7 @@ def extract_text(file_path):
     current_title = ''
     title_index = 0
 
+    logger.debug("Look over pages to extract text")
     for i, page in enumerate(pages):
         text = page.extract_text()
         title = find_title(text)

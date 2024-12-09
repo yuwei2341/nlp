@@ -1,15 +1,23 @@
-import logging
-from flask import Flask, render_template, request, redirect, url_for, flash
+from flask import Flask, request, render_template, redirect, url_for
 import os
+import logging
 from werkzeug.utils import secure_filename
-from utils.pdf_processor import extract_information
+
+import pandas as pd
+from transformers import AutoTokenizer, AutoModel
+import torch
+import torch.nn.functional as F
+from utils.pdf_reader import extract_information
+from utils.embedding_generator import compute_embeddings, generate_embeddings_for_dataframe
 from utils.file_manager import (
     save_extracted_data_to_csv,
     get_uploaded_files,
     file_exists,
     remove_file,
 )
-from utils.processing import process_extracted_info, summarize_extracted_info
+
+# Initialize the Flask app
+app = Flask(__name__)
 
 # Set up logging
 logging.basicConfig(
@@ -20,166 +28,128 @@ logging.basicConfig(
         logging.StreamHandler()  # Output logs to console as well
     ]
 )
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['EXTRACTED_DATA_FOLDER'] = 'extracted_data'
-app.secret_key = 'your_secret_key'
+app.config['EXTRACTED_DATA'] = None
+app.secret_key = 'XXXX'
 
-# Ensure folders exist
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-os.makedirs(app.config['EXTRACTED_DATA_FOLDER'], exist_ok=True)
+## Initialization of the model and data
+# Load the model only once during the app startup.
+model_ckpt = 'Alibaba-NLP/gte-multilingual-base'
+logger.info(f"Loading model {model_ckpt} on app startup...")
+try:
+    tokenizer = AutoTokenizer.from_pretrained(model_ckpt)
+    model = AutoModel.from_pretrained(model_ckpt, trust_remote_code=True)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model.to(device)
+    app.config['MODEL'] = model
+    app.config['TOKENIZER'] = tokenizer
+    app.config['DEVICE'] = device
+    logger.info(f"Model loaded successfully")
+except Exception as e:
+    logger.error(f"Error loading models: {e}")
 
+## TODO - load existing dataset of previously extracted data
+pdf_data = {}
+pdf_directory = 'data/pdf_files'
+
+# # Ensure the data and PDF directory exists
+# os.makedirs(pdf_directory, exist_ok=True)
+# os.makedirs('logs', exist_ok=True)
+
+# # Load existing PDFs into memory at the start of the app
+# def load_pdfs():
+#     for pdf_name in os.listdir(pdf_directory):
+#         if pdf_name.endswith('.pdf'):
+#             with open(os.path.join(pdf_directory, pdf_name), 'rb') as f:
+#                 reader = PyPDF2.PdfReader(f)
+#                 text = ""
+#                 for page in reader.pages:
+#                     text += page.extract_text()
+#                 pdf_data[pdf_name] = text
+
+# Allowed file extensions
 ALLOWED_EXTENSIONS = {'pdf'}
 
+# Helper function to check allowed file types
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
+# Home page route
 @app.route('/')
-def index():
-    uploaded_files = get_uploaded_files(app.config['UPLOAD_FOLDER'])
-    logging.info("Loaded uploaded files: %s", uploaded_files)
-    return render_template('index.html', uploaded_files=uploaded_files)
+def home():
+    pdf_names = ['a', 'b']
+    # pdf_names = list(pdf_data.keys())
+    return render_template('home.html', pdf_names=pdf_names)
 
+# File upload route
 @app.route('/upload', methods=['POST'])
-def upload_file():
-    if 'file' not in request.files:
-        flash('No file part')
-        logging.warning("No file part in request.")
-        return redirect(request.url)
+def upload_files():
+    files = request.files.getlist('pdf_files')
+    for file in files:
+        if file and allowed_file(file.filename):
+            filename = secure_filename(file.filename)
+            if filename in pdf_data:
+                # Ask user if they want to replace the file
+                return "File already exists. Do you want to replace it? [yes/no]"
+            else:
+                file_path = os.path.join(pdf_directory, filename)
+                file.save(file_path)
+
+                # Extract text from the PDF and store it
+                df_pdf = extract_information(file_path)
+                # compute_embeddings, 
+                pdf_dataset = generate_embeddings_for_dataframe(
+                    df_pdf, app.config["TOKENIZER"], app.config["MODEL"], app.config["DEVICE"], 
+                )
+                app.config['EXTRACTED_DATA'] = pdf_dataset
+                pdf_dataset.save_to_disk(os.path.join(app.config['EXTRACTED_DATA_FOLDER'], filename))
+
+                logging.info(f"Uploaded and extracted {filename}")
+
+                # After uploading, reload the PDFs to include the newly uploaded file
+                # load_pdfs()  # This reloads the pdf_data to include new PDF data
+    return redirect(url_for('home'))
+
+# Search functionality
+@app.route('/search', methods=['POST'])
+def search():
+    query = request.form['query']
+
+    query_embedding = compute_embeddings(
+        [query], app.config["TOKENIZER"], app.config["MODEL"], app.config["DEVICE"], 
+        ).cpu().detach().numpy()
+
+    selected_pdfs = request.form.getlist('pdf_files')
+    if not selected_pdfs:
+        selected_pdfs = list(pdf_data.keys())  # Search in all PDFs if none selected
+
+    search_results = {}
+    # for pdf_name in selected_pdfs:
+        # text = pdf_data.get(pdf_name, "")
+        # if query.lower() in text.lower():
+        #     paragraphs = [p for p in text.split("\n") if query.lower() in p.lower()]
+    pdf_dataset = app.config['EXTRACTED_DATA']
+    pdf_dataset.add_faiss_index(column="embeddings")
+    scores, samples = pdf_dataset.get_nearest_examples(
+        "embeddings", query_embedding, k=5
+    )
+    samples_df = pd.DataFrame.from_dict(samples)
+    samples_df["scores"] = scores
+    samples_df.sort_values("scores", ascending=True, inplace=True)
+
+    for _, row in samples_df.iterrows():
+        # search_results[pdf_name] = row["text"]
+        search_results['tmp'] = [row["text"]]
     
-    file = request.files['file']
-    
-    if file.filename == '':
-        flash('No selected file')
-        logging.warning("No file selected by the user.")
-        return redirect(request.url)
-
-    if file and allowed_file(file.filename):
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-
-        if file_exists(filepath):
-            flash(f'The file "{filename}" already exists. Do you want to replace it?')
-            logging.info(f"File {filename} already exists, asking user to replace it.")
-            return render_template('index.html', replace_file=filename)
-
-        # Save the new file
-        file.save(filepath)
-        logging.info(f"File {filename} uploaded successfully.")
-        
-        # Extract information from the PDF
-        extracted_info = extract_information(filepath)
-        logging.info(f"Extracted data from {filename}: {extracted_info}")
-
-        # Process extracted info (example: uppercase transformation)
-        processed_info = process_extracted_info(extracted_info)
-        logging.debug(f"Processed information for {filename}: {processed_info}")
-
-        # Save the extracted data to a CSV file
-        save_extracted_data_to_csv(extracted_info, filename, app.config['EXTRACTED_DATA_FOLDER'])
-        logging.info(f"Extracted data for {filename} saved to CSV.")
-        
-        flash(f'File "{filename}" uploaded and processed successfully!')
-        return redirect(url_for('index'))
-    else:
-        flash('Invalid file type. Only PDFs are allowed.')
-        logging.error("Invalid file type uploaded. Only PDFs are allowed.")
-        return redirect(request.url)
-
-@app.route('/replace/<filename>', methods=['POST'])
-def replace_file(filename):
-    filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-    remove_file(filepath)  # Remove the old file
-    logging.info(f"Old file {filename} replaced.")
-
-    file = request.files['file']
-    file.save(filepath)
-    logging.info(f"New file {filename} uploaded to replace the old one.")
-    
-    # Extract new information from the PDF
-    extracted_info = extract_information(filepath)
-    logging.info(f"Extracted new data from {filename}: {extracted_info}")
-
-    # Process the new extracted info
-    processed_info = process_extracted_info(extracted_info)
-    logging.debug(f"Processed new information for {filename}: {processed_info}")
-
-    # Save the extracted data to a CSV file
-    save_extracted_data_to_csv(extracted_info, filename, app.config['EXTRACTED_DATA_FOLDER'])
-    logging.info(f"New extracted data for {filename} saved to CSV.")
-    
-    flash(f'File "{filename}" replaced and processed successfully!')
-    return redirect(url_for('index'))
-
-@app.route('/view/<filename>', methods=['GET'])
-def view_file(filename):
-    csv_filepath = os.path.join(app.config['EXTRACTED_DATA_FOLDER'], filename + ".csv")
-    try:
-        with open(csv_filepath, 'r') as f:
-            extracted_info = f.read()
-        logging.info(f"Displayed extracted information for {filename}.")
-    except Exception as e:
-        logging.error(f"Error reading CSV for {filename}: {e}")
-        extracted_info = "Error loading file."
-
-    return render_template('index.html', extracted_info=extracted_info)
-
-@app.route('/query', methods=['POST'])
-def query():
-    query_text = request.form['query']
-    selected_files = request.form.getlist('selected_files')  # Get list of selected files
-    all_files = request.form.get('select_all_files')
-
-    extracted_info = {}
-    logging.info(f"Query received: {query_text}")
-
-    if selected_files:
-        # Show extracted info for selected files
-        for filename in selected_files:
-            csv_filepath = os.path.join(app.config['EXTRACTED_DATA_FOLDER'], filename + ".csv")
-            try:
-                with open(csv_filepath, 'r') as f:
-                    info = f.read()
-                logging.info(f"Extracted data displayed for {filename}.")
-            except Exception as e:
-                logging.error(f"Error reading CSV for {filename}: {e}")
-                info = "Error loading file."
-
-            # Process the extracted info
-            processed_info = process_extracted_info(info)
-            summary = summarize_extracted_info(info)
-
-            extracted_info[filename] = {
-                "processed": processed_info,
-                "summary": summary
-            }
-
-    elif all_files == 'true':
-        # Show extracted info for all files
-        uploaded_files = get_uploaded_files(app.config['UPLOAD_FOLDER'])
-        for filename in uploaded_files:
-            csv_filepath = os.path.join(app.config['EXTRACTED_DATA_FOLDER'], filename + ".csv")
-            try:
-                with open(csv_filepath, 'r') as f:
-                    info = f.read()
-                logging.info(f"Extracted data displayed for all files.")
-            except Exception as e:
-                logging.error(f"Error reading CSV for {filename}: {e}")
-                info = "Error loading file."
-
-            # Process the extracted info
-            processed_info = process_extracted_info(info)
-            summary = summarize_extracted_info(info)
-
-            extracted_info[filename] = {
-                "processed": processed_info,
-                "summary": summary
-            }
-
-    logging.info(f"Query results returned: {extracted_info}")
-    return render_template('index.html', extracted_info=extracted_info, query=query_text)
+    search_results['aaa'] = 'bbb'
+    return render_template('home.html', 
+                        #    pdf_names=list(pdf_data.keys()), 
+                           pdf_names=['tmp', 'aaa'], 
+                           search_results=search_results)
 
 if __name__ == '__main__':
-    logging.info("Starting Flask app...")
     app.run(debug=True)
