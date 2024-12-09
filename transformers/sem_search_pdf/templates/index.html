@@ -1,80 +1,112 @@
+<!-- templates/index.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-    <title>PDF Uploader</title>
+    <title>PDF Extraction and Query</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: #f4f4f4;
+        }
+
+        .container {
+            width: 80%;
+            max-width: 1200px;
+            display: flex;
+            justify-content: space-between;
+            padding: 20px;
+            background-color: #fff;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+            border-radius: 8px;
+        }
+
+        .form-container {
+            width: 48%;
+            padding: 20px;
+            box-sizing: border-box;
+            border-radius: 8px;
+            background-color: #f9f9f9;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+        }
+
+        .form-container h2 {
+            margin-bottom: 20px;
+        }
+
+        .form-container label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+
+        .form-container input {
+            width: 100%;
+            padding: 10px;
+            margin-bottom: 20px;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+
+        .form-container button {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 4px;
+            background-color: #4CAF50;
+            color: white;
+            font-size: 16px;
+            cursor: pointer;
+        }
+
+        .form-container button:hover {
+            background-color: #45a049;
+        }
+
+        /* Responsive styling */
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+                align-items: center;
+            }
+
+            .form-container {
+                width: 100%;
+                margin-bottom: 20px;
+            }
+        }
+    </style>
 </head>
 <body>
-    <h1>Upload PDF for Extraction</h1>
-    {% with messages = get_flashed_messages() %}
-        {% if messages %}
-            <ul>
-                {% for message in messages %}
-                    <li>{{ message }}</li>
-                {% endfor %}
-            </ul>
-        {% endif %}
-    {% endwith %}
-    
-    <form action="/query" method="post">
-        <label for="query">Enter your query:</label>
-        <input type="text" id="query" name="query" required>
-        <br>
-        
-        <label for="selected_files">Select files (one or multiple):</label>
-        <select name="selected_files" id="selected_files" multiple size="5">
-            {% for file in uploaded_files %}
-                <option value="{{ file }}">{{ file }}</option>
-            {% endfor %}
-        </select>
-        <br>
-        
-        <label for="select_all_files">
-            <input type="radio" id="select_all_files" name="select_all_files" value="true"> Select All Files
-        </label>
-        <br>
 
-        <label for="new_file">Or, Upload a New File:</label>
-        <input type="file" name="file" accept=".pdf">
-        <br>
+    <div class="container">
+        <!-- Left Side: Submit Query Form -->
+        <div class="form-container">
+            <h2>Submit a Query</h2>
+            <form action="/submit-query" method="post">
+                <label for="query">Enter your query:</label>
+                <input type="text" id="query" name="query" required>
+                <button type="submit">Submit Query</button>
+            </form>
+        </div>
 
-        <button type="submit">Submit</button>
-    </form>
+        <!-- Right Side: Upload PDF Files Form -->
+        <div class="form-container">
+            <h2>Upload PDF(s)</h2>
+            <form action="/upload-pdf" method="post" enctype="multipart/form-data">
+                <label for="pdf_files">Choose PDF files (one or more):</label>
+                <input type="file" id="pdf_files" name="pdf_files" accept=".pdf" multiple required>
+                <button type="submit">Upload PDF</button>
+            </form>
+        </div>
+    </div>
 
-    {% if replace_file %}
-        <form action="/replace/{{ replace_file }}" method="post" enctype="multipart/form-data">
-            <input type="file" name="file" accept=".pdf">
-            <button type="submit">Replace File</button>
-        </form>
-    {% endif %}
-    
-    {% if uploaded_files %}
-        <h2>Uploaded Files</h2>
-        <ul>
-            {% for file in uploaded_files %}
-                <li>
-                    {{ file }}
-                    <a href="{{ url_for('view_file', filename=file) }}">View Extracted Info</a>
-                </li>
-            {% endfor %}
-        </ul>
-    {% endif %}
-    
-    {% if extracted_info %}
-        <h2>Extracted Information for Query: "{{ query }}"</h2>
-        {% if extracted_info %}
-            {% for filename, content in extracted_info.items() %}
-                <h3>File: {{ filename }}</h3>
-                <p><strong>Processed Information:</strong></p>
-                <pre>{{ content.processed }}</pre>
-                <p><strong>Summary:</strong></p>
-                <pre>{{ content.summary }}</pre>
-            {% endfor %}
-        {% else %}
-            <p>No extracted information found.</p>
-        {% endif %}
-    {% endif %}
 </body>
 </html>

@@ -1,0 +1,25 @@
+<!-- templates/pdf_result.html -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF Extraction Results</title>
+</head>
+<body>
+    <h1>Extracted Information</h1>
+    
+    {% if extracted_data %}
+        {% for data in extracted_data %}
+            <div class="pdf-data">
+                <h2>Extracted Data</h2>
+                {{ data|safe }}
+            </div>
+        {% endfor %}
+    {% else %}
+        <p>No data extracted or no PDFs uploaded.</p>
+    {% endif %}
+    
+    <a href="{{ url_for('index') }}">Go back to homepage</a>
+</body>
+</html>
