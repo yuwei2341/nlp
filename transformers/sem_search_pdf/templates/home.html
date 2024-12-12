@@ -30,12 +30,10 @@
             {% if search_results %}
                 <h3>Search Results:</h3>
                 <ul>
-                    {% for pdf, paragraphs in search_results.items() %}
-                        <li><strong>{{ pdf }}</strong>
+                    {% for FILE_NAME, TITLE, PARAGRAPH, TEXT, scores in search_results %}
+                        <li><strong>{{ FILE_NAME }}</strong>
                             <ul>
-                                {% for paragraph in paragraphs %}
-                                    <li>{{ paragraph }}</li>
-                                {% endfor %}
+                                {{ TITLE }} {{ PARAGRAPH }} {{ TEXT }} {{ scores }}
                             </ul>
                         </li>
                     {% endfor %}

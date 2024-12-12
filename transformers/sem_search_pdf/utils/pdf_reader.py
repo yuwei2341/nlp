@@ -42,14 +42,13 @@ def find_title(text):
     Returns:
         str: The title of the page or None if the title cannot be determined.
     """
-    logger.debug("Search for the title on a page of the pdf.")
     weekday_match = re.search(r'(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)', text)
     if weekday_match:
         # Title ends right before the weekday name
         title_end = weekday_match.start() - 1
         # Find the start of the title by searching for the first newline before the weekday
         title_start = text.rfind('\n', 0, title_end) + 1
-        title = text[title_start:title_end].strip()
+        title = text[title_start:title_end+1].strip()
         return title
     return None
 
@@ -75,7 +74,6 @@ def extract_text(file_path):
     current_title = ''
     title_index = 0
 
-    logger.debug("Look over pages to extract text")
     for i, page in enumerate(pages):
         text = page.extract_text()
         title = find_title(text)
@@ -97,7 +95,7 @@ def extract_text(file_path):
     return df
 
 
-def extract_information(pdf_path):
+def extract_information(pdf_path, file_name):
     """
     Extracts and processes information from the provided PDF file.
 
@@ -111,6 +109,7 @@ def extract_information(pdf_path):
     """
     try:
         df = extract_text(pdf_path)
+        df['file_name'] = file_name
         return df
     except Exception as e:
         raise Exception(f"An error occurred while extracting information from the PDF: {str(e)}")

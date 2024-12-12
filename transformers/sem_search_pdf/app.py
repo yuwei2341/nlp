@@ -1,10 +1,11 @@
-from flask import Flask, request, render_template, redirect, url_for
+from flask import Flask, request, render_template, redirect, url_for, g
 import os
 import logging
 from werkzeug.utils import secure_filename
 
 import pandas as pd
 from transformers import AutoTokenizer, AutoModel
+from datasets import load_from_disk, concatenate_datasets, Dataset
 import torch
 import torch.nn.functional as F
 from utils.pdf_reader import extract_information
@@ -33,7 +34,7 @@ logger = logging.getLogger(__name__)
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['EXTRACTED_DATA_FOLDER'] = 'extracted_data'
-app.config['EXTRACTED_DATA'] = None
+app.config['PDF_DIRECTORY'] = 'data/pdf_files'
 app.secret_key = 'XXXX'
 
 ## Initialization of the model and data
@@ -52,24 +53,29 @@ try:
 except Exception as e:
     logger.error(f"Error loading models: {e}")
 
-## TODO - load existing dataset of previously extracted data
-pdf_data = {}
-pdf_directory = 'data/pdf_files'
+# Ensure the data and PDF directory exists
+os.makedirs(app.config['PDF_DIRECTORY'], exist_ok=True)
+os.makedirs('logs', exist_ok=True)
 
-# # Ensure the data and PDF directory exists
-# os.makedirs(pdf_directory, exist_ok=True)
-# os.makedirs('logs', exist_ok=True)
+@app.before_request
+def before_request():
+    """
+    Initialize global variables before handling each request.
 
-# # Load existing PDFs into memory at the start of the app
-# def load_pdfs():
-#     for pdf_name in os.listdir(pdf_directory):
-#         if pdf_name.endswith('.pdf'):
-#             with open(os.path.join(pdf_directory, pdf_name), 'rb') as f:
-#                 reader = PyPDF2.PdfReader(f)
-#                 text = ""
-#                 for page in reader.pages:
-#                     text += page.extract_text()
-#                 pdf_data[pdf_name] = text
+    This function sets up the global variables `pdf_embeddings` and `pdf_names`
+    to ensure they are fresh for every request. It attempts to load existing
+    PDF embeddings from a CSV file if available.
+    """
+    # Initialize pdf_embeddings and pdf_names for each request
+    g.pdf_embeddings = None
+    g.pdf_names = []
+    
+    # Check if the embeddings file exists and load it
+    extracted_pdf_files = os.listdir(app.config['EXTRACTED_DATA_FOLDER'])
+    for file in extracted_pdf_files:
+        loaded = load_from_disk(os.path.join(app.config['EXTRACTED_DATA_FOLDER'], file))
+        g.pdf_embeddings = loaded if g.pdf_embeddings is None else concatenate_datasets([g.pdf_embeddings, loaded])
+        logger.info(f"pdf_embeddings loaded for {file}")
 
 # Allowed file extensions
 ALLOWED_EXTENSIONS = {'pdf'}
@@ -81,9 +87,11 @@ def allowed_file(filename):
 # Home page route
 @app.route('/')
 def home():
-    pdf_names = ['a', 'b']
-    # pdf_names = list(pdf_data.keys())
-    return render_template('home.html', pdf_names=pdf_names)
+    if g.pdf_embeddings is not None:
+        g.pdf_names = list(set(g.pdf_embeddings['file_name'])) 
+    logger.info(f"pdf_embeddings in home {g.pdf_embeddings}")
+    logger.info(f"pdf_names: {g.pdf_names}")
+    return render_template('home.html', pdf_names=g.pdf_names)
 
 # File upload route
 @app.route('/upload', methods=['POST'])
@@ -91,27 +99,24 @@ def upload_files():
     files = request.files.getlist('pdf_files')
     for file in files:
         if file and allowed_file(file.filename):
-            filename = secure_filename(file.filename)
-            if filename in pdf_data:
+            file_name = secure_filename(file.filename)
+            if file_name in g.pdf_names:
                 # Ask user if they want to replace the file
                 return "File already exists. Do you want to replace it? [yes/no]"
             else:
-                file_path = os.path.join(pdf_directory, filename)
+                file_path = os.path.join(app.config['PDF_DIRECTORY'], file_name)
                 file.save(file_path)
 
                 # Extract text from the PDF and store it
-                df_pdf = extract_information(file_path)
+                df_pdf = extract_information(file_path, file_name)
                 # compute_embeddings, 
-                pdf_dataset = generate_embeddings_for_dataframe(
+                new_embeddings = generate_embeddings_for_dataframe(
                     df_pdf, app.config["TOKENIZER"], app.config["MODEL"], app.config["DEVICE"], 
                 )
-                app.config['EXTRACTED_DATA'] = pdf_dataset
-                pdf_dataset.save_to_disk(os.path.join(app.config['EXTRACTED_DATA_FOLDER'], filename))
-
-                logging.info(f"Uploaded and extracted {filename}")
-
-                # After uploading, reload the PDFs to include the newly uploaded file
-                # load_pdfs()  # This reloads the pdf_data to include new PDF data
+                # logger.info(f"{g.pdf_embeddings.features}, {new_embeddings.features}")
+                g.pdf_embeddings = new_embeddings if g.pdf_embeddings is None else concatenate_datasets([g.pdf_embeddings, new_embeddings])
+                new_embeddings.save_to_disk(os.path.join(app.config["EXTRACTED_DATA_FOLDER"], file_name))
+                logging.info(f"Uploaded and extracted {file_name}")
     return redirect(url_for('home'))
 
 # Search functionality
@@ -125,31 +130,36 @@ def search():
 
     selected_pdfs = request.form.getlist('pdf_files')
     if not selected_pdfs:
-        selected_pdfs = list(pdf_data.keys())  # Search in all PDFs if none selected
+        selected_pdfs = list(set(g.pdf_embeddings['file_name']))   # Search in all PDFs if none selected
+    logger.info(f"selected_pdfs {selected_pdfs}")
 
-    search_results = {}
-    # for pdf_name in selected_pdfs:
-        # text = pdf_data.get(pdf_name, "")
-        # if query.lower() in text.lower():
-        #     paragraphs = [p for p in text.split("\n") if query.lower() in p.lower()]
-    pdf_dataset = app.config['EXTRACTED_DATA']
-    pdf_dataset.add_faiss_index(column="embeddings")
-    scores, samples = pdf_dataset.get_nearest_examples(
+    search_pdf_embeddings = g.pdf_embeddings.filter(lambda x: x['file_name'] in selected_pdfs)
+    logger.info(f"search_pdf_embeddings {search_pdf_embeddings}")
+
+    search_pdf_embeddings.add_faiss_index(column="embeddings")
+    scores, samples = search_pdf_embeddings.get_nearest_examples(
         "embeddings", query_embedding, k=5
     )
     samples_df = pd.DataFrame.from_dict(samples)
     samples_df["scores"] = scores
     samples_df.sort_values("scores", ascending=True, inplace=True)
 
-    for _, row in samples_df.iterrows():
-        # search_results[pdf_name] = row["text"]
-        search_results['tmp'] = [row["text"]]
+    # search_results = {}
+    # for _, row in samples_df.iterrows():
+    #     # search_results[pdf_name] = row["text"]
+    #     search_results['tmp'] = [row["text"]]
     
-    search_results['aaa'] = 'bbb'
+    # search_results['aaa'] = 'bbb'
+    # return render_template('home.html', 
+    #                        pdf_names=g.pdf_names, 
+    #                        search_results=search_results)
+
+    logger.info(f"{samples_df.columns}")
+    search_results = samples_df[['file_name', 'title', 'paragraph', 'text', 'scores']].values.tolist()
     return render_template('home.html', 
-                        #    pdf_names=list(pdf_data.keys()), 
-                           pdf_names=['tmp', 'aaa'], 
+                           pdf_names=g.pdf_names, 
                            search_results=search_results)
+
 
 if __name__ == '__main__':
     app.run(debug=True)
