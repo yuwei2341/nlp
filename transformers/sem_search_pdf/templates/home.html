@@ -4,15 +4,71 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>PDF Search App</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f4f4;
+            margin: 0;
+            padding: 0;
+        }
+        .container {
+            display: flex;
+            flex-direction: column; /* Align panels vertically */
+            gap: 20px; /* Add spacing between panels */
+            padding: 20px;
+        }
+        .left-panel, .right-panel {
+            background-color: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 100%;
+        }
+        h2 {
+            color: #333;
+        }
+        button {
+            background-color: #007BFF;
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        table, th, td {
+            border: 1px solid #ddd;
+        }
+        th, td {
+            padding: 10px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+    </style>
 </head>
 <body>
     <div class="container">
         <div class="left-panel">
-            <h2>Upload PDF Files</h2>
+            <h2>Upload PDFs</h2>
             <form action="/upload" method="POST" enctype="multipart/form-data">
                 <input type="file" name="pdf_files" multiple>
                 <button type="submit">Submit</button>
             </form>
+            <h3>Available PDFs:</h3> 
+            <ul> 
+                {% for pdf in pdf_names %} 
+                    <li>{{ pdf }}</li> 
+                {% endfor %} 
+            </ul>
         </div>
 
         <div class="right-panel">
@@ -29,15 +85,24 @@
             
             {% if search_results %}
                 <h3>Search Results:</h3>
-                <ul>
-                    {% for FILE_NAME, TITLE, PARAGRAPH, TEXT, scores in search_results %}
-                        <li><strong>{{ FILE_NAME }}</strong>
-                            <ul>
-                                {{ TITLE }} {{ PARAGRAPH }} {{ TEXT }} {{ scores }}
-                            </ul>
-                        </li>
+                <table>
+                    <tr>
+                        <th>File</th>
+                        <th>Doc title</th>
+                        <th>Page in file</th>
+                        <th>Text</th>
+                        <th>Scores</th>
+                    </tr>
+                    {% for file_name, title, page_in_pdf, text, scores in search_results %}
+                    <tr>
+                        <td>{{ file_name }}</td>
+                        <td>{{ title }}</td>
+                        <td>{{ page_in_pdf }}</td>
+                        <td>{{ text }}</td>
+                        <td>{{ scores|round(1) }}</td>
+                    </tr>
                     {% endfor %}
-                </ul>
+                </table>
             {% endif %}
         </div>
     </div>

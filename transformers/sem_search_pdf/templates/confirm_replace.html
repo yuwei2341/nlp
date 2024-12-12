@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Confirm File Replace</title>
+</head>
+<body>
+    <h1>File already exists</h1>
+    <p>The file <strong>{{ file_name }}</strong> already exists. Do you want to replace it?</p>
+    <form method="POST" action="/replace">
+        <input type="hidden" name="file_name" value="{{ file_name }}">
+        <button type="submit" name="action" value="yes">Yes</button>
+        <button type="submit" name="action" value="no">No</button>
+    </form>
+</body>
+</html>
