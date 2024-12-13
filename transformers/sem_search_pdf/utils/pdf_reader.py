@@ -20,16 +20,18 @@ Usage:
         from utils.read_pdf import extract_information
         extracted_text = extract_information('path/to/file.pdf')
 
-Author: [Your Name]
-Date: [Creation Date or Last Update]
+Author: YL
+Date: 2412
 """
 
-import re, logging
+import re
+import logging
 import pandas as pd
 from pypdf import PdfReader
 
 # Create a logger for this file
 logger = logging.getLogger(__name__)
+
 
 def find_title(text):
     """
@@ -42,7 +44,8 @@ def find_title(text):
     Returns:
         str: The title of the page or None if the title cannot be determined.
     """
-    weekday_match = re.search(r'(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)', text)
+    weekday_match = re.search(
+        r'(Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)', text)
     if weekday_match:
         # Title ends right before the weekday name
         title_end = weekday_match.start() - 1
@@ -84,14 +87,17 @@ def extract_text(file_path):
             title_index += 1
 
         # Clean the text by removing bullet points and splitting it into paragraphs
-        paragraphs = [para for para in re.split(r'\b\w\.\n?', text) if para.strip()]
-        
+        paragraphs = [para for para in re.split(
+            r'\b\w\.\n?', text) if para.strip()]
+
         # Add each paragraph as a new row in the extracted data list
         for j, paragraph in enumerate(paragraphs):
-            extracted_data.append((title_index, current_title, i + 1, j + 1, paragraph))
+            extracted_data.append(
+                (title_index, current_title, i + 1, j + 1, paragraph))
 
     # Convert the list of extracted data into a pandas DataFrame
-    df = pd.DataFrame(extracted_data, columns=['page_in_on', 'title', 'page_in_pdf', 'paragraph', 'text'])
+    df = pd.DataFrame(extracted_data, columns=[
+                      'page_in_on', 'title', 'page_in_pdf', 'paragraph', 'text'])
     return df
 
 
@@ -100,7 +106,7 @@ def extract_information(pdf_path, file_name):
     Extracts and processes information from the provided PDF file.
 
     This function wraps the extraction process, allowing external modules to use it with a single call.
-    
+
     Parameters:
         pdf_path (str): The path to the PDF document.
 
@@ -112,4 +118,5 @@ def extract_information(pdf_path, file_name):
         df['file_name'] = file_name
         return df
     except Exception as e:
-        raise Exception(f"An error occurred while extracting information from the PDF: {str(e)}")
+        raise Exception(
+            f"An error occurred while extracting information from the PDF: {str(e)}")

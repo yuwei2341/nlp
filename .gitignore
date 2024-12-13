@@ -5,7 +5,9 @@ glove.6B.50d.txt
 .project
 .pydevproject
 *.model
+*.log
 # folder: / means the folder where .gitignore is 
+*data/
 /data/
 transformers/test_save_dataset/
 transformers/data/

@@ -11,12 +11,7 @@ import torch
 import torch.nn.functional as F
 from utils.pdf_reader import extract_information
 from utils.embedding_generator import compute_embeddings, generate_embeddings_for_dataframe
-from utils.file_manager import (
-    save_extracted_data_to_csv,
-    get_uploaded_files,
-    file_exists,
-    remove_file,
-)
+from utils.file_manager import get_pdf_names, remove_file_and_embedding
 
 # Initialize the Flask app
 app = Flask(__name__)
@@ -35,6 +30,8 @@ app.logger = logging.getLogger(__name__)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['EXTRACTED_DATA_FOLDER'] = 'extracted_data'
 app.config['PDF_DIRECTORY'] = 'data/pdf_files'
+app.config['MODEL_CKPT'] = 'Alibaba-NLP/gte-multilingual-base'
+app.config['K_NEIGHBORS'] = 5
 app.secret_key = 'XXXX'
 # Ensure the data and PDF directory exists
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
@@ -43,12 +40,10 @@ os.makedirs(app.config['PDF_DIRECTORY'], exist_ok=True)
 
 ## Initialization of the model and data
 # Load the model only once during the app startup.
-model_ckpt = 'Alibaba-NLP/gte-multilingual-base'
-app.logger.info(f"Loading model {model_ckpt} on app startup...")
-
+app.logger.info(f"Loading model {app.config['MODEL_CKPT']} on app startup...")
 try:
-    tokenizer = AutoTokenizer.from_pretrained(model_ckpt)
-    model = AutoModel.from_pretrained(model_ckpt, trust_remote_code=True)
+    tokenizer = AutoTokenizer.from_pretrained(app.config['MODEL_CKPT'])
+    model = AutoModel.from_pretrained(app.config['MODEL_CKPT'], trust_remote_code=True)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model.to(device)
     app.config.update({
@@ -68,12 +63,6 @@ def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 
-def update_pdf_names():
-    """Helper function to update the list of PDF names from the embeddings data."""
-    if g.pdf_embeddings is not None:
-        g.pdf_names = list(set(g.pdf_embeddings["file_name"]))
-
-
 @app.before_request
 def initialize_globals():
     """
@@ -89,13 +78,12 @@ def initialize_globals():
     for file_name in extracted_files:
         file_path = os.path.join(app.config['EXTRACTED_DATA_FOLDER'], file_name)
         loaded_embeddings = load_from_disk(file_path, keep_in_memory=True)
-        # loaded_embeddings = Dataset.from_dict(loaded_embeddings.to_dict())        
         if g.pdf_embeddings is None:
             g.pdf_embeddings = loaded_embeddings
         else:
             g.pdf_embeddings = concatenate_datasets([g.pdf_embeddings, loaded_embeddings])
     
-    update_pdf_names()
+    g.pdf_names = get_pdf_names(g.pdf_embeddings)
 
 
 # Home page route
@@ -127,12 +115,22 @@ def upload_pdfs():
             file_path = os.path.join(app.config['PDF_DIRECTORY'], file_name)
             uploaded_file.save(file_path)
             process_and_save_file(file_path, file_name)            
-    update_pdf_names()
+    g.pdf_names = get_pdf_names(g.pdf_embeddings)
     return redirect(url_for('home'))
 
 
 def process_and_save_file(file_path, file_name):
-    # Extract text from the PDF and store it
+    """
+    Process a newly uploaded PDF file and save its extracted text and
+    corresponding embeddings to the extracted data directory.
+
+    Args:
+        file_path (str): The file path of the uploaded PDF file.
+        file_name (str): The name of the uploaded PDF file.
+
+    Returns:
+        None
+    """
     extracted_text = extract_information(file_path, file_name)
     new_embeddings = generate_embeddings_for_dataframe(
         extracted_text, app.config["TOKENIZER"], app.config["MODEL"], app.config["DEVICE"],
@@ -159,10 +157,7 @@ def replace_file_confirmation():
 
     if action == 'yes':
         app.logger.info(f"Replacing file {file_name}.")
-        if os.path.exists(file_path):
-            os.remove(file_path)
-            shutil.rmtree(embedding_path)
-            app.logger.info(f"Removed existing file {file_path} and embeddings {embedding_path}")
+        remove_file_and_embedding(file_path, embedding_path)
         os.rename(temp_path, file_path)
         process_and_save_file(file_path, file_name)
         return redirect(url_for('home'))
@@ -203,7 +198,7 @@ def search():
     search_embeddings.add_faiss_index(column="embeddings")
 
     scores, samples = search_embeddings.get_nearest_examples(
-        "embeddings", query_embedding, k=5
+        "embeddings", query_embedding, k=app.config['K_NEIGHBORS']
     )
     search_results_df = pd.DataFrame.from_dict(samples)
     search_results_df["scores"] = scores
